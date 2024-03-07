@@ -1,0 +1,7 @@
+# Lines that start with '#' are comments.
+target
+**/target/**
+.idea
+*.iml
+.mvn
+.travis.yml.sav
