@@ -62,8 +62,7 @@ public abstract class ComponentConfiguration {
 
   public void configure(Context context) throws ConfigurationException {
     failIfConfigured();
-    String confType = context.getString(
-        BasicConfigurationConstants.CONFIG_TYPE);
+    String confType = context.getString(BasicConfigurationConstants.CONFIG_TYPE);
     if (confType != null && !confType.isEmpty()) {
       this.type = confType;
     }

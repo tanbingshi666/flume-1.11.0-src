@@ -27,24 +27,31 @@ import org.apache.flume.node.net.AuthorizationProvider;
  */
 public interface ConfigurationSourceFactory {
 
-  static ConfigurationSource getConfigurationSource(URI uri,
-      AuthorizationProvider authorizationProvider, boolean verifyHost) {
+    static ConfigurationSource getConfigurationSource(URI uri,
+                                                      AuthorizationProvider authorizationProvider, boolean verifyHost) {
 
-    String protocol = uri.getScheme();
-    final ServiceLoader<ConfigurationSourceFactory> serviceLoader =
-        ServiceLoader.load(ConfigurationSourceFactory.class,
-        ConfigurationSourceFactory.class.getClassLoader());
-    for (final ConfigurationSourceFactory configurationSourceFactory : serviceLoader) {
-      if (configurationSourceFactory.getSchemes().contains(protocol)) {
-        return configurationSourceFactory.createConfigurationSource(uri, authorizationProvider,
-            verifyHost);
-      }
+        String protocol = uri.getScheme();
+        /**
+         * 基于 JAVA SPI(Service Provider Interface) 机制搜索 ConfigurationSourceFactory 子类
+         * 1. ClasspathConfigurationSourceFactory: 配置文件 schema 为 classpath
+         * 2. FileConfigurationSourceFactory: 配置文件 schema 为 file
+         * 3. HttpConfigurationSourceFactory: 配置文件 schema 为 http、https
+         */
+        final ServiceLoader<ConfigurationSourceFactory> serviceLoader =
+                ServiceLoader.load(ConfigurationSourceFactory.class,
+                        ConfigurationSourceFactory.class.getClassLoader());
+        for (final ConfigurationSourceFactory configurationSourceFactory : serviceLoader) {
+            if (configurationSourceFactory.getSchemes().contains(protocol)) {
+                // 场景驱动情况下 返回 FileConfigurationSource
+                return configurationSourceFactory.createConfigurationSource(uri, authorizationProvider,
+                        verifyHost);
+            }
+        }
+        return null;
     }
-    return null;
-  }
 
-  List<String> getSchemes();
+    List<String> getSchemes();
 
-  ConfigurationSource createConfigurationSource(URI uri,
-      AuthorizationProvider authorizationProvider, boolean verifyHost);
+    ConfigurationSource createConfigurationSource(URI uri,
+                                                  AuthorizationProvider authorizationProvider, boolean verifyHost);
 }

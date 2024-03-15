@@ -29,64 +29,70 @@ import org.apache.flume.FlumeException;
 
 public abstract class AbstractChannelSelector implements ChannelSelector {
 
-  private List<Channel> channels;
-  private String name;
+    private List<Channel> channels;
+    private String name;
 
-  @Override
-  public List<Channel> getAllChannels() {
-    return channels;
-  }
-
-  @Override
-  public void setChannels(List<Channel> channels) {
-    this.channels = channels;
-  }
-
-  @Override
-  public synchronized void setName(String name) {
-    this.name = name;
-  }
-
-  @Override
-  public synchronized String getName() {
-    return name;
-  }
-
-  /**
-   *
-   * @return A map of name to channel instance.
-   */
-
-  protected Map<String, Channel> getChannelNameMap() {
-    Map<String, Channel> channelNameMap = new HashMap<String, Channel>();
-    for (Channel ch : getAllChannels()) {
-      channelNameMap.put(ch.getName(), ch);
+    @Override
+    public List<Channel> getAllChannels() {
+        return channels;
     }
-    return channelNameMap;
-  }
 
-  /**
-   * Given a list of channel names as space delimited string,
-   * returns list of channels.
-   * @return List of {@linkplain Channel}s represented by the names.
-   */
-  protected List<Channel> getChannelListFromNames(String channels,
-          Map<String, Channel> channelNameMap) {
-    List<Channel> configuredChannels = new ArrayList<Channel>();
-    if (channels == null || channels.isEmpty()) {
-      return configuredChannels;
+    @Override
+    public void setChannels(List<Channel> channels) {
+        /**
+         * 场景驱动情况下 channels = [MemoryChannel]
+         */
+        this.channels = channels;
     }
-    String[] chNames = channels.split(" ");
-    for (String name : chNames) {
-      Channel ch = channelNameMap.get(name);
-      if (ch != null) {
-        configuredChannels.add(ch);
-      } else {
-        throw new FlumeException("Selector channel not found: "
-                + name);
-      }
+
+    @Override
+    public synchronized void setName(String name) {
+        /**
+         * 场景驱动下 name = c1
+         */
+        this.name = name;
     }
-    return configuredChannels;
-  }
+
+    @Override
+    public synchronized String getName() {
+        return name;
+    }
+
+    /**
+     * @return A map of name to channel instance.
+     */
+
+    protected Map<String, Channel> getChannelNameMap() {
+        Map<String, Channel> channelNameMap = new HashMap<String, Channel>();
+        for (Channel ch : getAllChannels()) {
+            channelNameMap.put(ch.getName(), ch);
+        }
+        return channelNameMap;
+    }
+
+    /**
+     * Given a list of channel names as space delimited string,
+     * returns list of channels.
+     *
+     * @return List of {@linkplain Channel}s represented by the names.
+     */
+    protected List<Channel> getChannelListFromNames(String channels,
+                                                    Map<String, Channel> channelNameMap) {
+        List<Channel> configuredChannels = new ArrayList<Channel>();
+        if (channels == null || channels.isEmpty()) {
+            return configuredChannels;
+        }
+        String[] chNames = channels.split(" ");
+        for (String name : chNames) {
+            Channel ch = channelNameMap.get(name);
+            if (ch != null) {
+                configuredChannels.add(ch);
+            } else {
+                throw new FlumeException("Selector channel not found: "
+                        + name);
+            }
+        }
+        return configuredChannels;
+    }
 
 }

@@ -30,49 +30,68 @@ import com.google.common.collect.ImmutableMap;
 
 public class SimpleMaterializedConfiguration implements MaterializedConfiguration {
 
-  private final Map<String, Channel> channels;
-  private final Map<String, SourceRunner> sourceRunners;
-  private final Map<String, SinkRunner> sinkRunners;
+    private final Map<String, Channel> channels;
+    private final Map<String, SourceRunner> sourceRunners;
+    private final Map<String, SinkRunner> sinkRunners;
 
-  public SimpleMaterializedConfiguration() {
-    channels = new HashMap<String, Channel>();
-    sourceRunners = new HashMap<String, SourceRunner>();
-    sinkRunners = new HashMap<String, SinkRunner>();
-  }
+    public SimpleMaterializedConfiguration() {
+        /**
+         * 场景驱动情况下(syslogudp->memory->kafka)
+         * 缓存 Channel、SourceRunner (封装了 Source)、SinkRunner (封装了 Sink)
+         * 1. c1 -> MemoryChannel
+         * 2. r1 -> EventDrivenSource,
+         * EventDrivenSource 封装了 SyslogUDPSource、SyslogUDP 封装了 ReplicatingChannelSelector、ReplicatingChannelSelector 引用了 MemoryChannel
+         * 3. k1 -> SinkRunner
+         * SinkRunner 封装了 DefaultSinkProcessor、DefaultSinkProcess 封装了 KafkaSink、KafkaSink 引用了 MemoryChannel
+         */
+        channels = new HashMap<String, Channel>();
+        sourceRunners = new HashMap<String, SourceRunner>();
+        sinkRunners = new HashMap<String, SinkRunner>();
+    }
 
-  @Override
-  public String toString() {
-    return "{ sourceRunners:" + sourceRunners + " sinkRunners:" + sinkRunners
-        + " channels:" + channels + " }";
-  }
-  @Override
-  public void addSourceRunner(String name, SourceRunner sourceRunner) {
-    sourceRunners.put(name, sourceRunner);
-  }
+    @Override
+    public String toString() {
+        return "{ sourceRunners:" + sourceRunners + " sinkRunners:" + sinkRunners
+                + " channels:" + channels + " }";
+    }
 
-  @Override
-  public void addSinkRunner(String name, SinkRunner sinkRunner) {
-    sinkRunners.put(name, sinkRunner);
-  }
+    @Override
+    public void addSourceRunner(String name, SourceRunner sourceRunner) {
+        /**
+         * 场景驱动下 r1 -> SourceRunner
+         */
+        sourceRunners.put(name, sourceRunner);
+    }
 
-  @Override
-  public void addChannel(String name, Channel channel) {
-    channels.put(name, channel);
-  }
+    @Override
+    public void addSinkRunner(String name, SinkRunner sinkRunner) {
+        /**
+         * 场景驱动下 k1 -> SinkRunner (封装了具体的 Sink)
+         */
+        sinkRunners.put(name, sinkRunner);
+    }
 
-  @Override
-  public Map<String, Channel> getChannels() {
-    return ImmutableMap.copyOf(channels);
-  }
+    @Override
+    public void addChannel(String name, Channel channel) {
+        /**
+         * 场景驱动下 c1 -> MemoryChannel
+         */
+        channels.put(name, channel);
+    }
 
-  @Override
-  public Map<String, SourceRunner> getSourceRunners() {
-    return ImmutableMap.copyOf(sourceRunners);
-  }
+    @Override
+    public Map<String, Channel> getChannels() {
+        return ImmutableMap.copyOf(channels);
+    }
 
-  @Override
-  public Map<String, SinkRunner> getSinkRunners() {
-    return ImmutableMap.copyOf(sinkRunners);
-  }
+    @Override
+    public Map<String, SourceRunner> getSourceRunners() {
+        return ImmutableMap.copyOf(sourceRunners);
+    }
+
+    @Override
+    public Map<String, SinkRunner> getSinkRunners() {
+        return ImmutableMap.copyOf(sinkRunners);
+    }
 
 }

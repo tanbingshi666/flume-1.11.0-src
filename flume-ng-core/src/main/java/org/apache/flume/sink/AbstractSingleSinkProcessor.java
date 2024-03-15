@@ -28,38 +28,41 @@ import com.google.common.base.Preconditions;
  * A Sink Processor that only accesses a single Sink.
  */
 public abstract class AbstractSingleSinkProcessor implements SinkProcessor {
-  protected Sink sink;
-  private LifecycleState lifecycleState;
+    protected Sink sink;
+    private LifecycleState lifecycleState;
 
-  @Override
-  public void start() {
-    Preconditions.checkNotNull(sink, "DefaultSinkProcessor sink not set");
-    sink.start();
-    lifecycleState = LifecycleState.START;
-  }
+    @Override
+    public void start() {
+        Preconditions.checkNotNull(sink, "DefaultSinkProcessor sink not set");
+        /**
+         * 场景驱动情况下 sink = KafkaSink
+         */
+        sink.start();
+        lifecycleState = LifecycleState.START;
+    }
 
-  @Override
-  public void stop() {
-    Preconditions.checkNotNull(sink, "DefaultSinkProcessor sink not set");
-    sink.stop();
-    lifecycleState = LifecycleState.STOP;
-  }
+    @Override
+    public void stop() {
+        Preconditions.checkNotNull(sink, "DefaultSinkProcessor sink not set");
+        sink.stop();
+        lifecycleState = LifecycleState.STOP;
+    }
 
-  @Override
-  public LifecycleState getLifecycleState() {
-    return lifecycleState;
-  }
+    @Override
+    public LifecycleState getLifecycleState() {
+        return lifecycleState;
+    }
 
-  @Override
-  public void setSinks(List<Sink> sinks) {
-    Preconditions.checkNotNull(sinks);
-    Preconditions.checkArgument(sinks.size() == 1, "DefaultSinkPolicy can "
-        + "only handle one sink, "
-        + "try using a policy that supports multiple sinks");
-    sink = sinks.get(0);
-  }
+    @Override
+    public void setSinks(List<Sink> sinks) {
+        Preconditions.checkNotNull(sinks);
+        Preconditions.checkArgument(sinks.size() == 1, "DefaultSinkPolicy can "
+                + "only handle one sink, "
+                + "try using a policy that supports multiple sinks");
+        sink = sinks.get(0);
+    }
 
-  public Sink getSink() {
-    return sink;
-  }
+    public Sink getSink() {
+        return sink;
+    }
 }

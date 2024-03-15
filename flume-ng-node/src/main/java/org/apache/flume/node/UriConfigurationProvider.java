@@ -181,177 +181,202 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
  * @see Properties#load(java.io.Reader)
  */
 public class UriConfigurationProvider extends AbstractConfigurationProvider
-    implements LifecycleAware {
+        implements LifecycleAware {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(UriConfigurationProvider.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(UriConfigurationProvider.class);
 
-  private final List<ConfigurationSource> configurationSources;
-  private final File backupDirectory;
-  private final EventBus eventBus;
-  private final int interval;
-  private final CounterGroup counterGroup;
-  private LifecycleState lifecycleState = LifecycleState.IDLE;
-  private ScheduledExecutorService executorService;
-
-  public UriConfigurationProvider(String agentName, List<ConfigurationSource> sourceList,
-      String backupDirectory, EventBus eventBus, int pollInterval) {
-    super(agentName);
-    this.configurationSources = sourceList;
-    this.backupDirectory = backupDirectory != null ? new File(backupDirectory) : null;
-    this.eventBus = eventBus;
-    this.interval = pollInterval;
-    counterGroup = new CounterGroup();
-  }
-
-  @Override
-  public void start() {
-    if (eventBus != null && interval > 0) {
-      executorService = Executors.newSingleThreadScheduledExecutor(
-          new ThreadFactoryBuilder().setNameFormat("conf-file-poller-%d")
-              .build());
-
-      WatcherRunnable watcherRunnable = new WatcherRunnable(configurationSources, counterGroup,
-          eventBus);
-
-      executorService.scheduleWithFixedDelay(watcherRunnable, 0, interval,
-          TimeUnit.SECONDS);
-    }
-    lifecycleState = LifecycleState.START;
-  }
-
-  @Override
-  public void stop() {
-    if (executorService != null) {
-      executorService.shutdown();
-      try {
-        if (!executorService.awaitTermination(500, TimeUnit.MILLISECONDS)) {
-          LOGGER.debug("File watcher has not terminated. Forcing shutdown of executor.");
-          executorService.shutdownNow();
-          while (!executorService.awaitTermination(500, TimeUnit.MILLISECONDS)) {
-            LOGGER.debug("Waiting for file watcher to terminate");
-          }
-        }
-      } catch (InterruptedException e) {
-        LOGGER.debug("Interrupted while waiting for file watcher to terminate");
-        Thread.currentThread().interrupt();
-      }
-    }
-    lifecycleState = LifecycleState.STOP;
-  }
-
-  @Override
-  public LifecycleState getLifecycleState() {
-    return lifecycleState;
-  }
-
-  protected List<ConfigurationSource> getConfigurationSources() {
-    return configurationSources;
-  }
-
-  @Override
-  public FlumeConfiguration getFlumeConfiguration() {
-    Map<String, String> configMap = null;
-    Properties properties = new Properties();
-    for (ConfigurationSource configurationSource : configurationSources) {
-      try (InputStream is = configurationSource.getInputStream()) {
-        if (is != null) {
-          switch (configurationSource.getExtension()) {
-            case ConfigurationSource.JSON: case ConfigurationSource.YAML:
-            case ConfigurationSource.XML: {
-              LOGGER.warn("File extension type {} is unsupported",
-                  configurationSource.getExtension());
-              break;
-            }
-            default: {
-              properties.load(is);
-              break;
-            }
-          }
-        }
-      } catch (IOException ioe) {
-        LOGGER.warn("Unable to load properties from {}: {}", configurationSource.getUri(),
-            ioe.getMessage());
-      }
-      if (properties.size() > 0) {
-        configMap = MapResolver.resolveProperties(properties);
-      }
-    }
-    if (configMap != null) {
-      Properties props = new Properties();
-      props.putAll(configMap);
-      if (backupDirectory != null) {
-        if (backupDirectory.mkdirs()) {
-          // This is only being logged to keep Spotbugs happy. We can't ignore the result of mkdirs.
-          LOGGER.debug("Created directories for {}", backupDirectory.toString());
-        }
-        File backupFile = getBackupFile(backupDirectory, getAgentName());
-        try (OutputStream os = new FileOutputStream(backupFile)) {
-          props.store(os, "Backup created at " + LocalDateTime.now().toString());
-        } catch (IOException ioe) {
-          LOGGER.warn("Unable to create backup properties file: {}" + ioe.getMessage());
-        }
-      }
-    } else {
-      if (backupDirectory != null) {
-        File backup = getBackupFile(backupDirectory, getAgentName());
-        if (backup.exists()) {
-          Properties props = new Properties();
-          try (InputStream is = new FileInputStream(backup)) {
-            LOGGER.warn("Unable to access primary configuration. Trying backup");
-            props.load(is);
-            configMap = MapResolver.resolveProperties(props);
-          } catch (IOException ex) {
-            LOGGER.warn("Error reading backup file: {}", ex.getMessage());
-          }
-        }
-      }
-    }
-    if (configMap != null) {
-      return new FlumeConfiguration(configMap);
-    } else {
-      LOGGER.error("No configuration could be found");
-      return null;
-    }
-  }
-
-  private File getBackupFile(File backupDirectory, String agentName) {
-    if (backupDirectory != null) {
-      return new File(backupDirectory, "." + agentName + ".properties");
-    }
-    return null;
-  }
-
-  private class WatcherRunnable implements Runnable {
-
-    private List<ConfigurationSource> configurationSources;
-    private final CounterGroup counterGroup;
+    private final List<ConfigurationSource> configurationSources;
+    private final File backupDirectory;
     private final EventBus eventBus;
+    private final int interval;
+    private final CounterGroup counterGroup;
+    private LifecycleState lifecycleState = LifecycleState.IDLE;
+    private ScheduledExecutorService executorService;
 
-    public WatcherRunnable(List<ConfigurationSource> sources, CounterGroup counterGroup,
-        EventBus eventBus) {
-      this.configurationSources = sources;
-      this.counterGroup = counterGroup;
-      this.eventBus = eventBus;
+    public UriConfigurationProvider(String agentName, List<ConfigurationSource> sourceList,
+                                    String backupDirectory, EventBus eventBus, int pollInterval) {
+        super(agentName);
+        // 配置文件
+        this.configurationSources = sourceList;
+        this.backupDirectory = backupDirectory != null ? new File(backupDirectory) : null;
+        this.eventBus = eventBus;
+        this.interval = pollInterval;
+        counterGroup = new CounterGroup();
     }
 
     @Override
-    public void run() {
-      LOGGER.debug("Checking for changes to sources");
+    public void start() {
+        if (eventBus != null && interval > 0) {
+            executorService = Executors.newSingleThreadScheduledExecutor(
+                    new ThreadFactoryBuilder().setNameFormat("conf-file-poller-%d")
+                            .build());
 
-      counterGroup.incrementAndGet("uri.checks");
-      try {
-        boolean isModified = false;
-        for (ConfigurationSource source : configurationSources) {
-          if (source.isModified()) {
-            isModified = true;
-          }
+            WatcherRunnable watcherRunnable = new WatcherRunnable(configurationSources, counterGroup,
+                    eventBus);
+
+            executorService.scheduleWithFixedDelay(watcherRunnable, 0, interval, TimeUnit.SECONDS);
         }
-        if (isModified) {
-          eventBus.post(getConfiguration());
-        }
-      } catch (ConfigurationException ex) {
-        LOGGER.warn("Unable to update configuration: {}", ex.getMessage());
-      }
+        lifecycleState = LifecycleState.START;
     }
-  }
+
+    @Override
+    public void stop() {
+        if (executorService != null) {
+            executorService.shutdown();
+            try {
+                if (!executorService.awaitTermination(500, TimeUnit.MILLISECONDS)) {
+                    LOGGER.debug("File watcher has not terminated. Forcing shutdown of executor.");
+                    executorService.shutdownNow();
+                    while (!executorService.awaitTermination(500, TimeUnit.MILLISECONDS)) {
+                        LOGGER.debug("Waiting for file watcher to terminate");
+                    }
+                }
+            } catch (InterruptedException e) {
+                LOGGER.debug("Interrupted while waiting for file watcher to terminate");
+                Thread.currentThread().interrupt();
+            }
+        }
+        lifecycleState = LifecycleState.STOP;
+    }
+
+    @Override
+    public LifecycleState getLifecycleState() {
+        return lifecycleState;
+    }
+
+    protected List<ConfigurationSource> getConfigurationSources() {
+        return configurationSources;
+    }
+
+    @Override
+    public FlumeConfiguration getFlumeConfiguration() {
+        Map<String, String> configMap = null;
+        Properties properties = new Properties();
+        // 基于场景驱动方式 configurationSources 保存一个 FileConfigurationSource 对象 也即配置文件
+        for (ConfigurationSource configurationSource : configurationSources) {
+            try (InputStream is = configurationSource.getInputStream()) {
+                if (is != null) {
+                    switch (configurationSource.getExtension()) {
+                        case ConfigurationSource.JSON:
+                        case ConfigurationSource.YAML:
+                        case ConfigurationSource.XML: {
+                            LOGGER.warn("File extension type {} is unsupported",
+                                    configurationSource.getExtension());
+                            break;
+                        }
+                        default: {
+                            // 加载配置文件到 Properties 对象中
+                            properties.load(is);
+                            break;
+                        }
+                    }
+                }
+            } catch (IOException ioe) {
+                LOGGER.warn("Unable to load properties from {}: {}", configurationSource.getUri(),
+                        ioe.getMessage());
+            }
+            if (properties.size() > 0) {
+                /**
+                 * 里面的逻辑:
+                 * 如果配置文件存在变量 比如 ${name}, 那么 flume 基于系统环境变量 (export name=flume) 进行替换
+                 * ${name} => flume
+                 */
+                configMap = MapResolver.resolveProperties(properties);
+            }
+        }
+        if (configMap != null) {
+            Properties props = new Properties();
+            props.putAll(configMap);
+
+            // 入口参数是否存在 --backup-directory 配置 一般不配置
+            if (backupDirectory != null) {
+                if (backupDirectory.mkdirs()) {
+                    // This is only being logged to keep Spotbugs happy. We can't ignore the result of mkdirs.
+                    LOGGER.debug("Created directories for {}", backupDirectory.toString());
+                }
+                File backupFile = getBackupFile(backupDirectory, getAgentName());
+                try (OutputStream os = new FileOutputStream(backupFile)) {
+                    props.store(os, "Backup created at " + LocalDateTime.now().toString());
+                } catch (IOException ioe) {
+                    LOGGER.warn("Unable to create backup properties file: {}" + ioe.getMessage());
+                }
+            }
+        } else {
+            if (backupDirectory != null) {
+                File backup = getBackupFile(backupDirectory, getAgentName());
+                if (backup.exists()) {
+                    Properties props = new Properties();
+                    try (InputStream is = new FileInputStream(backup)) {
+                        LOGGER.warn("Unable to access primary configuration. Trying backup");
+                        props.load(is);
+                        configMap = MapResolver.resolveProperties(props);
+                    } catch (IOException ex) {
+                        LOGGER.warn("Error reading backup file: {}", ex.getMessage());
+                    }
+                }
+            }
+        }
+        if (configMap != null) {
+            /**
+             * 封装配置文件对象为 FlumeConfiguration 其中 configMap 一般 KV 等于原始文件的内容
+             * 原始文件内容格式(一般情况下):
+             * 1. <agent-name>.sources|channels|sinks = <value>
+             * 2. <agent-name>.sources|channels|sinks.<component-name>.<config-key> = <value>
+             *
+             * 一个 <agent-name> 对应一个 AgentConfiguration
+             * 1. AgentConfiguration 维护了 sources、channels、sinks 的名称 (解析格式 1)
+             * 2. 同时 AgentConfiguration 还分别维护了 sources、channels、sinks 的配置信息 (解析格式 2)
+             * sources   配置信息  -> sourcesContext<String,Context>
+             * sinks     配置信息  -> sinksContext<String,Context>
+             * channels  配置信息  -> channelsContext<String,Context>
+             * 其中 key 存储 <component-name> value 存储 Context
+             * Context 底层又维护了一个 HashMap<String,String> 其中 key 存储 <config-key> value 存储 <value>
+             */
+            return new FlumeConfiguration(configMap);
+        } else {
+            LOGGER.error("No configuration could be found");
+            return null;
+        }
+    }
+
+    private File getBackupFile(File backupDirectory, String agentName) {
+        if (backupDirectory != null) {
+            return new File(backupDirectory, "." + agentName + ".properties");
+        }
+        return null;
+    }
+
+    private class WatcherRunnable implements Runnable {
+
+        private List<ConfigurationSource> configurationSources;
+        private final CounterGroup counterGroup;
+        private final EventBus eventBus;
+
+        public WatcherRunnable(List<ConfigurationSource> sources, CounterGroup counterGroup,
+                               EventBus eventBus) {
+            this.configurationSources = sources;
+            this.counterGroup = counterGroup;
+            this.eventBus = eventBus;
+        }
+
+        @Override
+        public void run() {
+            LOGGER.debug("Checking for changes to sources");
+
+            counterGroup.incrementAndGet("uri.checks");
+            try {
+                boolean isModified = false;
+                for (ConfigurationSource source : configurationSources) {
+                    if (source.isModified()) {
+                        isModified = true;
+                    }
+                }
+                if (isModified) {
+                    eventBus.post(getConfiguration());
+                }
+            } catch (ConfigurationException ex) {
+                LOGGER.warn("Unable to update configuration: {}", ex.getMessage());
+            }
+        }
+    }
 }

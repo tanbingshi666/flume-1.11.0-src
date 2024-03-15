@@ -35,67 +35,79 @@ import org.slf4j.LoggerFactory;
 
 public class ChannelSelectorFactory {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(
-      ChannelSelectorFactory.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(
+            ChannelSelectorFactory.class);
 
-  public static ChannelSelector create(List<Channel> channels,
-      Map<String, String> config) {
+    public static ChannelSelector create(List<Channel> channels,
+                                         Map<String, String> config) {
 
-    ChannelSelector selector = getSelectorForType(config.get(
-        BasicConfigurationConstants.CONFIG_TYPE));
+        /**
+         * 默认 channel selector 为 ReplicatingChannelSelector
+         * 关于 channel selector 有如下核心几种 (参考 ChannelSelectorType 源码)
+         * 1 ReplicatingChannelSelector 将 source 产生的数据发往所有的 channels
+         * 2 MultiplexingChannelSelector 将 source 产生的数据发往指定 channels
+         */
+        ChannelSelector selector = getSelectorForType(config.get(BasicConfigurationConstants.CONFIG_TYPE));
 
-    selector.setChannels(channels);
+        /**
+         * 设置 channel
+         * 场景驱动情况下 selector = ReplicatingChannelSelector channels = [MemoryChannel]
+         */
+        selector.setChannels(channels);
 
-    Context context = new Context();
-    context.putAll(config);
+        Context context = new Context();
+        context.putAll(config);
 
-    Configurables.configure(selector, context);
-    return selector;
-  }
-
-  public static ChannelSelector create(List<Channel> channels,
-      ChannelSelectorConfiguration conf) {
-    String type = ChannelSelectorType.REPLICATING.toString();
-    if (conf != null) {
-      type = conf.getType();
-    }
-    ChannelSelector selector = getSelectorForType(type);
-    selector.setChannels(channels);
-    Configurables.configure(selector, conf);
-    return selector;
-  }
-
-  private static ChannelSelector getSelectorForType(String type) {
-    if (type == null || type.trim().length() == 0) {
-      return new ReplicatingChannelSelector();
+        /**
+         * 场景驱动情况下 调用 ReplicatingChannelSelector.configure()
+         */
+        Configurables.configure(selector, context);
+        return selector;
     }
 
-    String selectorClassName = type;
-    ChannelSelectorType  selectorType = ChannelSelectorType.OTHER;
-
-    try {
-      selectorType = ChannelSelectorType.valueOf(type.toUpperCase(Locale.ENGLISH));
-    } catch (IllegalArgumentException ex) {
-      LOGGER.debug("Selector type {} is a custom type", type);
+    public static ChannelSelector create(List<Channel> channels,
+                                         ChannelSelectorConfiguration conf) {
+        String type = ChannelSelectorType.REPLICATING.toString();
+        if (conf != null) {
+            type = conf.getType();
+        }
+        ChannelSelector selector = getSelectorForType(type);
+        selector.setChannels(channels);
+        Configurables.configure(selector, conf);
+        return selector;
     }
 
-    if (!selectorType.equals(ChannelSelectorType.OTHER)) {
-      selectorClassName = selectorType.getChannelSelectorClassName();
+    private static ChannelSelector getSelectorForType(String type) {
+        if (type == null || type.trim().length() == 0) {
+            return new ReplicatingChannelSelector();
+        }
+
+        String selectorClassName = type;
+        ChannelSelectorType selectorType = ChannelSelectorType.OTHER;
+
+        try {
+            selectorType = ChannelSelectorType.valueOf(type.toUpperCase(Locale.ENGLISH));
+        } catch (IllegalArgumentException ex) {
+            LOGGER.debug("Selector type {} is a custom type", type);
+        }
+
+        if (!selectorType.equals(ChannelSelectorType.OTHER)) {
+            selectorClassName = selectorType.getChannelSelectorClassName();
+        }
+
+        ChannelSelector selector = null;
+
+        try {
+            @SuppressWarnings("unchecked")
+            Class<? extends ChannelSelector> selectorClass =
+                    (Class<? extends ChannelSelector>) Class.forName(selectorClassName);
+            selector = selectorClass.newInstance();
+        } catch (Exception ex) {
+            throw new FlumeException("Unable to load selector type: " + type
+                    + ", class: " + selectorClassName, ex);
+        }
+
+        return selector;
     }
-
-    ChannelSelector selector = null;
-
-    try {
-      @SuppressWarnings("unchecked")
-      Class<? extends ChannelSelector> selectorClass =
-          (Class<? extends ChannelSelector>) Class.forName(selectorClassName);
-      selector = selectorClass.newInstance();
-    } catch (Exception ex) {
-      throw new FlumeException("Unable to load selector type: " + type
-          + ", class: " + selectorClassName, ex);
-    }
-
-    return selector;
-  }
 
 }

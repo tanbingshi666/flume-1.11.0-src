@@ -30,38 +30,50 @@ import org.apache.flume.lifecycle.LifecycleState;
  */
 public class EventDrivenSourceRunner extends SourceRunner {
 
-  private LifecycleState lifecycleState;
+    private LifecycleState lifecycleState;
 
-  public EventDrivenSourceRunner() {
-    lifecycleState = LifecycleState.IDLE;
-  }
+    public EventDrivenSourceRunner() {
+        lifecycleState = LifecycleState.IDLE;
+    }
 
-  @Override
-  public void start() {
-    Source source = getSource();
-    ChannelProcessor cp = source.getChannelProcessor();
-    cp.initialize();
-    source.start();
-    lifecycleState = LifecycleState.START;
-  }
+    @Override
+    public void start() {
+        /**
+         * 场景驱动情况下 source = SyslogUDPSource
+         */
+        Source source = getSource();
+        /**
+         * 场景驱动情况下 cp = ChannelProcessor
+         */
+        ChannelProcessor cp = source.getChannelProcessor();
+        /**
+         * 初始化 ChannelProcessor 本质初始化拦截器 暂时不考虑
+         */
+        cp.initialize();
+        /**
+         * 启动 source
+         */
+        source.start();
+        lifecycleState = LifecycleState.START;
+    }
 
-  @Override
-  public void stop() {
-    Source source = getSource();
-    source.stop();
-    ChannelProcessor cp = source.getChannelProcessor();
-    cp.close();
-    lifecycleState = LifecycleState.STOP;
-  }
+    @Override
+    public void stop() {
+        Source source = getSource();
+        source.stop();
+        ChannelProcessor cp = source.getChannelProcessor();
+        cp.close();
+        lifecycleState = LifecycleState.STOP;
+    }
 
-  @Override
-  public String toString() {
-    return "EventDrivenSourceRunner: { source:" + getSource() + " }";
-  }
+    @Override
+    public String toString() {
+        return "EventDrivenSourceRunner: { source:" + getSource() + " }";
+    }
 
-  @Override
-  public LifecycleState getLifecycleState() {
-    return lifecycleState;
-  }
+    @Override
+    public LifecycleState getLifecycleState() {
+        return lifecycleState;
+    }
 
 }

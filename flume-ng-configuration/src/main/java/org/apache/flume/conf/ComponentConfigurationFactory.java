@@ -29,53 +29,54 @@ import org.apache.flume.conf.source.SourceConfiguration.SourceConfigurationType;
 
 public class ComponentConfigurationFactory {
 
-  @SuppressWarnings("unchecked")
-  public static ComponentConfiguration create(String name, String type, ComponentType component)
-      throws ConfigurationException {
-    Class<? extends ComponentConfiguration> confType = null;
+    @SuppressWarnings("unchecked")
+    public static ComponentConfiguration create(String name, String type, ComponentType component)
+            throws ConfigurationException {
+        Class<? extends ComponentConfiguration> confType = null;
 
-    if (type == null) {
-      throw new ConfigurationException(
-          "Cannot create component without knowing its type!");
-    }
-    try {
-      confType = (Class<? extends ComponentConfiguration>) Class.forName(type);
-      return confType.getConstructor(String.class).newInstance(type);
-    } catch (Exception ignored) {
-      try {
-        type = type.toUpperCase(Locale.ENGLISH);
-        switch (component) {
-          case SOURCE:
-            return SourceConfigurationType.valueOf(type.toUpperCase(Locale.ENGLISH))
-                .getConfiguration(name);
-          case CONFIG_FILTER:
-            return ConfigFilterConfigurationType.valueOf(type.toUpperCase(Locale.ENGLISH))
-                .getConfiguration(name);
-          case SINK:
-            return SinkConfigurationType.valueOf(type.toUpperCase(Locale.ENGLISH))
-                .getConfiguration(name);
-          case CHANNEL:
-            return ChannelConfigurationType.valueOf(type.toUpperCase(Locale.ENGLISH))
-                .getConfiguration(name);
-          case SINK_PROCESSOR:
-            return SinkProcessorConfigurationType.valueOf(type.toUpperCase(Locale.ENGLISH))
-                .getConfiguration(name);
-          case CHANNELSELECTOR:
-            return ChannelSelectorConfigurationType.valueOf(type.toUpperCase(Locale.ENGLISH))
-                .getConfiguration(name);
-          case SINKGROUP:
-            return new SinkGroupConfiguration(name);
-          default:
+        if (type == null) {
             throw new ConfigurationException(
-                "Cannot create configuration. Unknown Type specified: " + type);
+                    "Cannot create component without knowing its type!");
         }
-      } catch (ConfigurationException e) {
-        throw e;
-      } catch (Exception e) {
-        throw new ConfigurationException("Could not create configuration! " +
-            " Due to " + e.getClass().getSimpleName() + ": " + e.getMessage(),
-            e);
-      }
+        try {
+            confType = (Class<? extends ComponentConfiguration>) Class.forName(type);
+            return confType.getConstructor(String.class).newInstance(type);
+        } catch (Exception ignored) {
+            try {
+                type = type.toUpperCase(Locale.ENGLISH);
+                switch (component) {
+                    case SOURCE:
+                        return SourceConfigurationType.valueOf(type.toUpperCase(Locale.ENGLISH))
+                                .getConfiguration(name);
+                    case CONFIG_FILTER:
+                        return ConfigFilterConfigurationType.valueOf(type.toUpperCase(Locale.ENGLISH))
+                                .getConfiguration(name);
+                    case SINK:
+                        return SinkConfigurationType.valueOf(type.toUpperCase(Locale.ENGLISH))
+                                .getConfiguration(name);
+                    case CHANNEL:
+                        // MEMORY("org.apache.flume.conf.channel.MemoryChannelConfiguration")
+                        return ChannelConfigurationType.valueOf(type.toUpperCase(Locale.ENGLISH))
+                                .getConfiguration(name);
+                    case SINK_PROCESSOR:
+                        return SinkProcessorConfigurationType.valueOf(type.toUpperCase(Locale.ENGLISH))
+                                .getConfiguration(name);
+                    case CHANNELSELECTOR:
+                        return ChannelSelectorConfigurationType.valueOf(type.toUpperCase(Locale.ENGLISH))
+                                .getConfiguration(name);
+                    case SINKGROUP:
+                        return new SinkGroupConfiguration(name);
+                    default:
+                        throw new ConfigurationException(
+                                "Cannot create configuration. Unknown Type specified: " + type);
+                }
+            } catch (ConfigurationException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new ConfigurationException("Could not create configuration! " +
+                        " Due to " + e.getClass().getSimpleName() + ": " + e.getMessage(),
+                        e);
+            }
+        }
     }
-  }
 }

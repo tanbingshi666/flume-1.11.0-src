@@ -32,44 +32,48 @@ import org.apache.flume.Event;
  */
 public class ReplicatingChannelSelector extends AbstractChannelSelector {
 
-  /**
-   * Configuration to set a subset of the channels as optional.
-   */
-  public static final String CONFIG_OPTIONAL = "optional";
-  List<Channel> requiredChannels = null;
-  List<Channel> optionalChannels = new ArrayList<Channel>();
-
-  @Override
-  public List<Channel> getRequiredChannels(Event event) {
-    /*
-     * Seems like there are lot of components within flume that do not call
-     * configure method. It is conceiveable that custom component tests too
-     * do that. So in that case, revert to old behavior.
+    /**
+     * Configuration to set a subset of the channels as optional.
      */
-    if (requiredChannels == null) {
-      return getAllChannels();
-    }
-    return requiredChannels;
-  }
+    public static final String CONFIG_OPTIONAL = "optional";
+    List<Channel> requiredChannels = null;
+    List<Channel> optionalChannels = new ArrayList<Channel>();
 
-  @Override
-  public List<Channel> getOptionalChannels(Event event) {
-    return optionalChannels;
-  }
-
-  @Override
-  public void configure(Context context) {
-    String optionalList = context.getString(CONFIG_OPTIONAL);
-    requiredChannels = new ArrayList<Channel>(getAllChannels());
-    Map<String, Channel> channelNameMap = getChannelNameMap();
-    if (optionalList != null && !optionalList.isEmpty()) {
-      for (String optional : optionalList.split("\\s+")) {
-        Channel optionalChannel = channelNameMap.get(optional);
-        requiredChannels.remove(optionalChannel);
-        if (!optionalChannels.contains(optionalChannel)) {
-          optionalChannels.add(optionalChannel);
+    @Override
+    public List<Channel> getRequiredChannels(Event event) {
+        /*
+         * Seems like there are lot of components within flume that do not call
+         * configure method. It is conceiveable that custom component tests too
+         * do that. So in that case, revert to old behavior.
+         */
+        if (requiredChannels == null) {
+            return getAllChannels();
         }
-      }
+        return requiredChannels;
     }
-  }
+
+    @Override
+    public List<Channel> getOptionalChannels(Event event) {
+        return optionalChannels;
+    }
+
+    @Override
+    public void configure(Context context) {
+        /**
+         * 对于 context 而言 一般情况下为空 但是可以在 source 配置 比如如下:
+         * a1.sources.r1.selector.xxx = yyy
+         */
+        String optionalList = context.getString(CONFIG_OPTIONAL);
+        requiredChannels = new ArrayList<Channel>(getAllChannels());
+        Map<String, Channel> channelNameMap = getChannelNameMap();
+        if (optionalList != null && !optionalList.isEmpty()) {
+            for (String optional : optionalList.split("\\s+")) {
+                Channel optionalChannel = channelNameMap.get(optional);
+                requiredChannels.remove(optionalChannel);
+                if (!optionalChannels.contains(optionalChannel)) {
+                    optionalChannels.add(optionalChannel);
+                }
+            }
+        }
+    }
 }
