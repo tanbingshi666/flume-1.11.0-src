@@ -164,23 +164,50 @@ public class SyslogUDPSource extends AbstractSource implements EventDrivenSource
         @Override
         protected void channelRead0(ChannelHandlerContext ctx, DatagramPacket packet) throws Exception {
             try {
+                /**
+                 * UDP 服务接收一条数据最大大小为 64kb 最小为 2kb
+                 */
                 syslogUtils.setEventSize(maxsize);
+
+                /**
+                 * 接收数据解析为 Flume Event
+                 */
                 Event e = syslogUtils.extractEvent(packet.content());
                 if (e == null) {
                     return;
                 }
 
+                /**
+                 * 如果在配置文件中指定 a1.sources.r1.clientIPHeader = report_ip
+                 * 则 clientIPHeader = report_ip 故将客户端的 IP 设置在 Event 的头部 (比如: report_ip->192.169.14.203)
+                 */
                 if (clientIPHeader != null) {
                     e.getHeaders().put(clientIPHeader, SyslogUtils.getIP(packet.sender()));
                 }
 
+                /**
+                 * 与 clientIPHeader 相同的逻辑
+                 * a1.sources.r1.clientHostnameHeader = report_hostname  -> Event Header (report_hostname->bigdata-3)
+                 */
                 if (clientHostnameHeader != null) {
                     e.getHeaders().put(clientHostnameHeader, SyslogUtils.getHostname(packet.sender()));
                 }
 
+                /**
+                 * source counter 自增 1 表示 received 到一条记录
+                 * src.events.received -> 1++
+                 */
                 sourceCounter.incrementEventReceivedCount();
 
+                /**
+                 * 将 Event 推送到 Channel (如果配置了 拦截器则先执行在推送)
+                 */
                 getChannelProcessor().processEvent(e);
+
+                /**
+                 * source counter 自增 1 表示 accepted 到一条记录
+                 * src.events.accepted -> 1++
+                 */
                 sourceCounter.incrementEventAcceptedCount();
             } catch (ChannelException ex) {
                 logger.error("Error writting to channel", ex);

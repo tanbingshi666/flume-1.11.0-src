@@ -278,21 +278,46 @@ public class ChannelProcessor implements Configurable {
      */
     public void processEvent(Event event) {
 
+        /**
+         * 将 Event 经过拦截器处理
+         * 暂时不考虑拦截器
+         */
         event = interceptorChain.intercept(event);
         if (event == null) {
             return;
         }
 
         // Process required channels
+        /**
+         * ChannelSelector 有三种
+         * 1. MultiplexingChannelSelector: 需要根据 Event 的头部相关信息选择对应的 Channel
+         * 2. ReplicatingChannelSelector: 将 Event 发送全部 Channel
+         * 3. LoadBalancingChannelSelector: 负载均衡方式
+         * 场景驱动情况下 也即 ReplicatingChannelSelector 也是默认的 Channel Selector 返回一个 MemoryChannel
+         */
         List<Channel> requiredChannels = selector.getRequiredChannels(event);
         for (Channel reqChannel : requiredChannels) {
+            /**
+             * 场景驱动情况下 reqChannel = MemoryChannel
+             * 获取 put 事务 (没有则创建)
+             */
             Transaction tx = reqChannel.getTransaction();
             Preconditions.checkNotNull(tx, "Transaction object must not be null");
             try {
+                /**
+                 * 开始 put 事务
+                 * 场景驱动情况下 暂时不做啥
+                 */
                 tx.begin();
 
+                /**
+                 * 将 Event 推送到事务的阻塞队列中等待 sink 拉取
+                 */
                 reqChannel.put(event);
 
+                /**
+                 * 提交 put 事务
+                 */
                 tx.commit();
             } catch (Throwable t) {
                 tx.rollback();
@@ -306,6 +331,9 @@ public class ChannelProcessor implements Configurable {
                             "channel: " + reqChannel, t);
                 }
             } finally {
+                /**
+                 * 关闭事务
+                 */
                 if (tx != null) {
                     tx.close();
                 }
@@ -313,6 +341,10 @@ public class ChannelProcessor implements Configurable {
         }
 
         // Process optional channels
+        /**
+         * 判断是否有可选 channel 如果有 则执行即可
+         * 场景驱动情况下 optionalChannels 为空 故不需要往下看了
+         */
         List<Channel> optionalChannels = selector.getOptionalChannels(event);
         for (Channel optChannel : optionalChannels) {
             Transaction tx = null;

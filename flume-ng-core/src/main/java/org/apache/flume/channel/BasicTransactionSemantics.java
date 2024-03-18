@@ -60,161 +60,188 @@ import com.google.common.base.Preconditions;
  */
 public abstract class BasicTransactionSemantics implements Transaction {
 
-  private State state;
-  private long initialThreadId;
+    private State state;
+    private long initialThreadId;
 
-  protected void doBegin() throws InterruptedException {
-  }
-  protected abstract void doPut(Event event) throws InterruptedException;
-  protected abstract Event doTake() throws InterruptedException;
-  protected abstract void doCommit() throws InterruptedException;
-  protected abstract void doRollback() throws InterruptedException;
-  protected void doClose() {
-  }
-
-  protected BasicTransactionSemantics() {
-    state = State.NEW;
-    initialThreadId = Thread.currentThread().getId();
-  }
-
-  /**
-   * <p>
-   * The method to which {@link BasicChannelSemantics} delegates calls
-   * to <code>put</code>.
-   * </p>
-   */
-  protected void put(Event event) {
-    Preconditions.checkState(Thread.currentThread().getId() == initialThreadId,
-        "put() called from different thread than getTransaction()!");
-    Preconditions.checkState(state.equals(State.OPEN),
-        "put() called when transaction is %s!", state);
-    Preconditions.checkArgument(event != null,
-        "put() called with null event!");
-
-    try {
-      doPut(event);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new ChannelException(e.toString(), e);
+    protected void doBegin() throws InterruptedException {
     }
-  }
 
-  /**
-   * <p>
-   * The method to which {@link BasicChannelSemantics} delegates calls
-   * to <code>take</code>.
-   * </p>
-   */
-  protected Event take() {
-    Preconditions.checkState(Thread.currentThread().getId() == initialThreadId,
-        "take() called from different thread than getTransaction()!");
-    Preconditions.checkState(state.equals(State.OPEN),
-        "take() called when transaction is %s!", state);
+    protected abstract void doPut(Event event) throws InterruptedException;
 
-    try {
-      return doTake();
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      return null;
+    protected abstract Event doTake() throws InterruptedException;
+
+    protected abstract void doCommit() throws InterruptedException;
+
+    protected abstract void doRollback() throws InterruptedException;
+
+    protected void doClose() {
     }
-  }
 
-  /**
-   * @return the current state of the transaction
-   */
-  protected State getState() {
-    return state;
-  }
-
-  @Override
-  public void begin() {
-    Preconditions.checkState(Thread.currentThread().getId() == initialThreadId,
-        "begin() called from different thread than getTransaction()!");
-    Preconditions.checkState(state.equals(State.NEW),
-        "begin() called when transaction is " + state + "!");
-
-    try {
-      doBegin();
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new ChannelException(e.toString(), e);
+    protected BasicTransactionSemantics() {
+        state = State.NEW;
+        initialThreadId = Thread.currentThread().getId();
     }
-    state = State.OPEN;
-  }
 
-  @Override
-  public void commit() {
-    Preconditions.checkState(Thread.currentThread().getId() == initialThreadId,
-        "commit() called from different thread than getTransaction()!");
-    Preconditions.checkState(state.equals(State.OPEN),
-        "commit() called when transaction is %s!", state);
+    /**
+     * <p>
+     * The method to which {@link BasicChannelSemantics} delegates calls
+     * to <code>put</code>.
+     * </p>
+     */
+    protected void put(Event event) {
+        Preconditions.checkState(Thread.currentThread().getId() == initialThreadId,
+                "put() called from different thread than getTransaction()!");
+        Preconditions.checkState(state.equals(State.OPEN),
+                "put() called when transaction is %s!", state);
+        Preconditions.checkArgument(event != null,
+                "put() called with null event!");
 
-    try {
-      doCommit();
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new ChannelException(e.toString(), e);
+        try {
+            /**
+             *  do put event
+             */
+            doPut(event);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ChannelException(e.toString(), e);
+        }
     }
-    state = State.COMPLETED;
-  }
 
-  @Override
-  public void rollback() {
-    Preconditions.checkState(Thread.currentThread().getId() == initialThreadId,
-        "rollback() called from different thread than getTransaction()!");
-    Preconditions.checkState(state.equals(State.OPEN),
-        "rollback() called when transaction is %s!", state);
+    /**
+     * <p>
+     * The method to which {@link BasicChannelSemantics} delegates calls
+     * to <code>take</code>.
+     * </p>
+     */
+    protected Event take() {
+        Preconditions.checkState(Thread.currentThread().getId() == initialThreadId,
+                "take() called from different thread than getTransaction()!");
+        Preconditions.checkState(state.equals(State.OPEN), "take() called when transaction is %s!", state);
 
-    state = State.COMPLETED;
-    try {
-      doRollback();
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new ChannelException(e.toString(), e);
+        try {
+            /**
+             * do take event
+             */
+            return doTake();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        }
     }
-  }
 
-  @Override
-  public void close() {
-    Preconditions.checkState(Thread.currentThread().getId() == initialThreadId,
-        "close() called from different thread than getTransaction()!");
-    Preconditions.checkState(
-            state.equals(State.NEW) || state.equals(State.COMPLETED),
-            "close() called when transaction is %s"
-            + " - you must either commit or rollback first", state);
+    /**
+     * @return the current state of the transaction
+     */
+    protected State getState() {
+        return state;
+    }
 
-    state = State.CLOSED;
-    doClose();
-  }
+    @Override
+    public void begin() {
+        Preconditions.checkState(Thread.currentThread().getId() == initialThreadId,
+                "begin() called from different thread than getTransaction()!");
+        Preconditions.checkState(state.equals(State.NEW), "begin() called when transaction is " + state + "!");
 
-  @Override
-  public String toString() {
-    StringBuilder builder = new StringBuilder();
-    builder.append("BasicTransactionSemantics: {");
-    builder.append(" state:").append(state);
-    builder.append(" initialThreadId:").append(initialThreadId);
-    builder.append(" }");
-    return builder.toString();
-  }
+        try {
+            /**
+             * 开始事务
+             * 场景驱动情况下 调用 MemoryTransaction 的父类 BasicTransactionSemantics.doBegin()
+             */
+            doBegin();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ChannelException(e.toString(), e);
+        }
+        /**
+         * 将事务状态修改为 OPEN
+         */
+        state = State.OPEN;
+    }
 
-  /**
-   * <p>
-   * The state of the {@link Transaction} to which it belongs.
-   * </p>
-   * <dl>
-   * <dt>NEW</dt>
-   * <dd>A newly created transaction that has not yet begun.</dd>
-   * <dt>OPEN</dt>
-   * <dd>A transaction that is open. It is permissible to commit or rollback.
-   * </dd>
-   * <dt>COMPLETED</dt>
-   * <dd>This transaction has been committed or rolled back. It is illegal to
-   * perform any further operations beyond closing it.</dd>
-   * <dt>CLOSED</dt>
-   * <dd>A closed transaction. No further operations are permitted.</dd>
-   * </dl>
-   */
-  protected static enum State {
-    NEW, OPEN, COMPLETED, CLOSED
-  }
+    @Override
+    public void commit() {
+        Preconditions.checkState(Thread.currentThread().getId() == initialThreadId,
+                "commit() called from different thread than getTransaction()!");
+        Preconditions.checkState(state.equals(State.OPEN), "commit() called when transaction is %s!", state);
+
+        try {
+            /**
+             * 执行提交事务
+             */
+            doCommit();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ChannelException(e.toString(), e);
+        }
+        /**
+         * 将事务的状态修改为 COMPLETED
+         */
+        state = State.COMPLETED;
+    }
+
+    @Override
+    public void rollback() {
+        Preconditions.checkState(Thread.currentThread().getId() == initialThreadId,
+                "rollback() called from different thread than getTransaction()!");
+        Preconditions.checkState(state.equals(State.OPEN),
+                "rollback() called when transaction is %s!", state);
+
+        state = State.COMPLETED;
+        try {
+            doRollback();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ChannelException(e.toString(), e);
+        }
+    }
+
+    @Override
+    public void close() {
+        Preconditions.checkState(Thread.currentThread().getId() == initialThreadId,
+                "close() called from different thread than getTransaction()!");
+        Preconditions.checkState(
+                state.equals(State.NEW) || state.equals(State.COMPLETED),
+                "close() called when transaction is %s"
+                        + " - you must either commit or rollback first", state);
+
+        /**
+         * 事务状态修改为 CLOSED
+         */
+        state = State.CLOSED;
+        /**
+         * 执行关闭事务
+         */
+        doClose();
+    }
+
+    @Override
+    public String toString() {
+        StringBuilder builder = new StringBuilder();
+        builder.append("BasicTransactionSemantics: {");
+        builder.append(" state:").append(state);
+        builder.append(" initialThreadId:").append(initialThreadId);
+        builder.append(" }");
+        return builder.toString();
+    }
+
+    /**
+     * <p>
+     * The state of the {@link Transaction} to which it belongs.
+     * </p>
+     * <dl>
+     * <dt>NEW</dt>
+     * <dd>A newly created transaction that has not yet begun.</dd>
+     * <dt>OPEN</dt>
+     * <dd>A transaction that is open. It is permissible to commit or rollback.
+     * </dd>
+     * <dt>COMPLETED</dt>
+     * <dd>This transaction has been committed or rolled back. It is illegal to
+     * perform any further operations beyond closing it.</dd>
+     * <dt>CLOSED</dt>
+     * <dd>A closed transaction. No further operations are permitted.</dd>
+     * </dl>
+     */
+    protected static enum State {
+        NEW, OPEN, COMPLETED, CLOSED
+    }
 }

@@ -154,6 +154,10 @@ public class KafkaSink extends AbstractSink implements Configurable, BatchSizeSu
          */
 
         Status result = Status.READY;
+
+        /**
+         * 获取 channel
+         */
         Channel channel = getChannel();
         Transaction transaction = null;
         Event event = null;
@@ -163,29 +167,66 @@ public class KafkaSink extends AbstractSink implements Configurable, BatchSizeSu
         try {
             long processedEvents = 0;
 
+            /**
+             * 获取当前 take 事务 (不存在则创建)
+             */
             transaction = channel.getTransaction();
+
+            /**
+             * 开始 take 事务
+             */
             transaction.begin();
 
             kafkaFutures.clear();
             long batchStartTime = System.nanoTime();
+
+            /**
+             * 默认每次事务执行批次大小为 100
+             */
             for (; processedEvents < batchSize; processedEvents += 1) {
+                /**
+                 * 从 channel 的事务获取 event
+                 */
                 event = channel.take();
 
+                /**
+                 * 从 channel 获取 event 可能为 null
+                 * 如果为 null 结束当前 take 事务
+                 */
                 if (event == null) {
                     // no events available in channel
                     if (processedEvents == 0) {
                         result = Status.BACKOFF;
+                        /**
+                         * sink 监控指标累加
+                         * sink.batch.empty -> 1++
+                         */
                         counter.incrementBatchEmptyCount();
                     } else {
+                        /**
+                         * sink 监控指标累加
+                         * sink.batch.underflow -> 1++
+                         */
                         counter.incrementBatchUnderflowCount();
                     }
                     break;
                 }
+
+                /**
+                 * sink 监控指标累加
+                 * sink.event.drain.attempt -> 1++
+                 */
                 counter.incrementEventDrainAttemptCount();
 
                 byte[] eventBody = event.getBody();
                 Map<String, String> headers = event.getHeaders();
 
+                /**
+                 * 是否允许覆盖主题
+                 * 如果在 sink 配置了 allowTopicOverride = true (默认)
+                 * 那么如果在 source 生成的 event 的 header 存在 topic = xxx
+                 * 则覆盖掉 sink 配置的 topic
+                 */
                 if (allowTopicOverride) {
                     eventTopic = headers.get(topicHeader);
                     if (eventTopic == null) {
@@ -199,6 +240,9 @@ public class KafkaSink extends AbstractSink implements Configurable, BatchSizeSu
                     eventTopic = topic;
                 }
 
+                /**
+                 * 判断 event 的 headers 是否存在 key 也即该 event 根据 key 发送到 topic 的哪个分区
+                 */
                 eventKey = headers.get(KEY_HEADER);
                 if (logger.isTraceEnabled()) {
                     if (LogPrivacyUtil.allowLogRawData()) {
@@ -213,6 +257,9 @@ public class KafkaSink extends AbstractSink implements Configurable, BatchSizeSu
                 // create a message and add to buffer
                 long startTime = System.currentTimeMillis();
 
+                /**
+                 * 以下都是构建 ProducerRecord 的 header 信息
+                 */
                 Integer partitionId = null;
                 try {
                     ProducerRecord<String, byte[]> record;
@@ -252,6 +299,9 @@ public class KafkaSink extends AbstractSink implements Configurable, BatchSizeSu
                         }
                     }
 
+                    /**
+                     * 创建 ProducerRecord 记录并通过 kafkaProducer 异步发送数据
+                     */
                     if (partitionId != null) {
                         record = new ProducerRecord<>(eventTopic, partitionId, timestamp, eventKey,
                                 serializeEvent(event, useAvroEventFormat), kafkaHeaders);
@@ -271,6 +321,9 @@ public class KafkaSink extends AbstractSink implements Configurable, BatchSizeSu
             }
 
             //Prevent linger.ms from holding the batch
+            /**
+             * 可能受 linger.ms 参数的影响 这里直接将当前事务的批次刷新
+             */
             producer.flush();
 
             // publish batch and commit.
@@ -279,10 +332,18 @@ public class KafkaSink extends AbstractSink implements Configurable, BatchSizeSu
                     future.get();
                 }
                 long endTime = System.nanoTime();
+                /**
+                 * sink 监控指标累加
+                 * channel.kafka.event.send.time ->
+                 * sink.event.drain.sucess   ->
+                 */
                 counter.addToKafkaEventSendTimer((endTime - batchStartTime) / (1000 * 1000));
                 counter.addToEventDrainSuccessCount(kafkaFutures.size());
             }
 
+            /**
+             * 提交当前事务
+             */
             transaction.commit();
 
         } catch (Exception ex) {

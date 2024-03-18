@@ -69,29 +69,59 @@ public class MemoryChannel extends BasicChannelSemantics implements TransactionC
         private int takeByteCounter = 0;
 
         public MemoryTransaction(int transCapacity, ChannelCounter counter) {
+            /**
+             * 默认情况下 channel 的事务大小为 100 (transactionCapacity = 100)
+             * 初始化两个阻塞队列 (线程安全) 初始化大小都等于 channel 事务大小
+             * putList 缓存 source 推送的 Event
+             * takeList 缓存 sink 拉取的 Event
+             */
             putList = new LinkedBlockingDeque<Event>(transCapacity);
             takeList = new LinkedBlockingDeque<Event>(transCapacity);
 
+            /**
+             * channel 的监控指标对象
+             */
             channelCounter = counter;
         }
 
         @Override
         protected void doPut(Event event) throws InterruptedException {
+            /**
+             * channel 监控指标自增 1 表示 channel put event 尝试次数
+             * channel.event.put.attempt -> 1++
+             */
             channelCounter.incrementEventPutAttemptCount();
+
+            /**
+             * 将 Event 的 body 字节大小除于 100 结果向上取整
+             */
             int eventByteSize = (int) Math.ceil(estimateEventSize(event) / byteCapacitySlotSize);
 
+            /**
+             * 将 Event 缓存在 putList 阻塞队列中
+             * 默认情况下追加到 putList 的末尾 如果不能 put Event 说明该 putList 阻塞队列 (默认容量为 100) 满了
+             */
             if (!putList.offer(event)) {
                 throw new ChannelException(
                         "Put queue for MemoryTransaction of capacity " +
                                 putList.size() + " full, consider committing more frequently, " +
                                 "increasing capacity or increasing thread count");
             }
+
+            /**
+             * 字节累加
+             */
             putByteCounter += eventByteSize;
         }
 
         @Override
         protected Event doTake() throws InterruptedException {
+            /**
+             * channel 监控指标累加
+             * channel.event.take.attempt  -> 1++
+             */
             channelCounter.incrementEventTakeAttemptCount();
+
             if (takeList.remainingCapacity() == 0) {
                 throw new ChannelException("Take list for MemoryTransaction, capacity " +
                         takeList.size() + " full, consider committing more frequently, " +
@@ -100,14 +130,23 @@ public class MemoryChannel extends BasicChannelSemantics implements TransactionC
             if (!queueStored.tryAcquire(keepAlive, TimeUnit.SECONDS)) {
                 return null;
             }
+
             Event event;
             synchronized (queueLock) {
+                /**
+                 * 从阻塞队列 queue 的头部获取 event 如果没有则返回 null
+                 */
                 event = queue.poll();
             }
-            Preconditions.checkNotNull(event, "Queue.poll returned NULL despite semaphore " +
-                    "signalling existence of entry");
+            Preconditions.checkNotNull(event, "Queue.poll returned NULL despite semaphore " + "signalling existence of entry");
+            /**
+             * 将从阻塞队列中获取 event 引用条件到 take 的阻塞队列
+             */
             takeList.put(event);
 
+            /**
+             * 计算 event 字节大小 用于 take、put 阻塞队列的信号量
+             */
             int eventByteSize = (int) Math.ceil(estimateEventSize(event) / byteCapacitySlotSize);
             takeByteCounter += eventByteSize;
 
@@ -116,6 +155,9 @@ public class MemoryChannel extends BasicChannelSemantics implements TransactionC
 
         @Override
         protected void doCommit() throws InterruptedException {
+            /**
+             * sink 消费一般需要大于 source 产生 event 速度 否则需要等待
+             */
             int remainingChange = takeList.size() - putList.size();
             if (remainingChange < 0) {
                 if (!bytesRemaining.tryAcquire(putByteCounter, keepAlive, TimeUnit.SECONDS)) {
@@ -132,7 +174,11 @@ public class MemoryChannel extends BasicChannelSemantics implements TransactionC
             }
             int puts = putList.size();
             int takes = takeList.size();
+
             synchronized (queueLock) {
+                /**
+                 * 将 putList 的 Events 移动到 queue (阻塞队列 默认大小为 100) 队列中
+                 */
                 if (puts > 0) {
                     while (!putList.isEmpty()) {
                         if (!queue.offer(putList.removeFirst())) {
@@ -143,21 +189,34 @@ public class MemoryChannel extends BasicChannelSemantics implements TransactionC
                 putList.clear();
                 takeList.clear();
             }
+
+            /**
+             * 不考虑 load balance 情况下
+             */
             bytesRemaining.release(takeByteCounter);
             takeByteCounter = 0;
             putByteCounter = 0;
-
             queueStored.release(puts);
             if (remainingChange > 0) {
                 queueRemaining.release(remainingChange);
             }
+
+            /**
+             * channel 监控指标 channel.event.put.success -> + puts
+             */
             if (puts > 0) {
                 channelCounter.addToEventPutSuccessCount(puts);
             }
+            /**
+             * channel 监控指标 channel.event.take.success -> + takes
+             */
             if (takes > 0) {
                 channelCounter.addToEventTakeSuccessCount(takes);
             }
 
+            /**
+             * channel 监控指标 channel.current.size -> 当前 queue 大小
+             */
             channelCounter.setChannelSize(queue.size());
         }
 
@@ -379,6 +438,9 @@ public class MemoryChannel extends BasicChannelSemantics implements TransactionC
 
     @Override
     protected BasicTransactionSemantics createTransaction() {
+        /**
+         * MemoryChannel 对象 MemoryTransaction 事务
+         */
         return new MemoryTransaction(transCapacity, channelCounter);
     }
 

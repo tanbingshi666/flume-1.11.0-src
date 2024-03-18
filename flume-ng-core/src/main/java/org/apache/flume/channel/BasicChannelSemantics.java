@@ -39,90 +39,111 @@ import com.google.common.base.Preconditions;
 @InterfaceStability.Stable
 public abstract class BasicChannelSemantics extends AbstractChannel {
 
-  private ThreadLocal<BasicTransactionSemantics> currentTransaction
-      = new ThreadLocal<BasicTransactionSemantics>();
+    private ThreadLocal<BasicTransactionSemantics> currentTransaction
+            = new ThreadLocal<BasicTransactionSemantics>();
 
-  private boolean initialized = false;
+    private volatile boolean initialized = false;
 
-  /**
-   * <p>
-   * Called upon first getTransaction() request, while synchronized on
-   * this {@link Channel} instance.  Use this method to delay the
-   * initializization resources until just before the first
-   * transaction begins.
-   * </p>
-   */
-  protected void initialize() {
-  }
+    /**
+     * <p>
+     * Called upon first getTransaction() request, while synchronized on
+     * this {@link Channel} instance.  Use this method to delay the
+     * initializization resources until just before the first
+     * transaction begins.
+     * </p>
+     */
+    protected void initialize() {
+    }
 
-  /**
-   * <p>
-   * Called to create new {@link Transaction} objects, which must
-   * extend {@link BasicTransactionSemantics}.  Each object is used
-   * for only one transaction, but is stored in a thread-local and
-   * retrieved by <code>getTransaction</code> for the duration of that
-   * transaction.
-   * </p>
-   */
-  protected abstract BasicTransactionSemantics createTransaction();
+    /**
+     * <p>
+     * Called to create new {@link Transaction} objects, which must
+     * extend {@link BasicTransactionSemantics}.  Each object is used
+     * for only one transaction, but is stored in a thread-local and
+     * retrieved by <code>getTransaction</code> for the duration of that
+     * transaction.
+     * </p>
+     */
+    protected abstract BasicTransactionSemantics createTransaction();
 
-  /**
-   * <p>
-   * Ensures that a transaction exists for this thread and then
-   * delegates the <code>put</code> to the thread's {@link
-   * BasicTransactionSemantics} instance.
-   * </p>
-   */
-  @Override
-  public void put(Event event) throws ChannelException {
-    BasicTransactionSemantics transaction = currentTransaction.get();
-    Preconditions.checkState(transaction != null,
-        "No transaction exists for this thread");
-    transaction.put(event);
-  }
+    /**
+     * <p>
+     * Ensures that a transaction exists for this thread and then
+     * delegates the <code>put</code> to the thread's {@link
+     * BasicTransactionSemantics} instance.
+     * </p>
+     */
+    @Override
+    public void put(Event event) throws ChannelException {
+        /**
+         * 场景驱动情况下 transaction = MemoryTransaction
+         */
+        BasicTransactionSemantics transaction = currentTransaction.get();
+        Preconditions.checkState(transaction != null, "No transaction exists for this thread");
+        /**
+         * 推送 Event 到 MemoryTransaction
+         */
+        transaction.put(event);
+    }
 
-  /**
-   * <p>
-   * Ensures that a transaction exists for this thread and then
-   * delegates the <code>take</code> to the thread's {@link
-   * BasicTransactionSemantics} instance.
-   * </p>
-   */
-  @Override
-  public Event take() throws ChannelException {
-    BasicTransactionSemantics transaction = currentTransaction.get();
-    Preconditions.checkState(transaction != null,
-        "No transaction exists for this thread");
-    return transaction.take();
-  }
+    /**
+     * <p>
+     * Ensures that a transaction exists for this thread and then
+     * delegates the <code>take</code> to the thread's {@link
+     * BasicTransactionSemantics} instance.
+     * </p>
+     */
+    @Override
+    public Event take() throws ChannelException {
+        BasicTransactionSemantics transaction = currentTransaction.get();
+        Preconditions.checkState(transaction != null, "No transaction exists for this thread");
+        /**
+         * 从事务中获取 event
+         */
+        return transaction.take();
+    }
 
-  /**
-   * <p>
-   * Initializes the channel if it is not already, then checks to see
-   * if there is an open transaction for this thread, creating a new
-   * one via <code>createTransaction</code> if not.
-   * @return the current <code>Transaction</code> object for the
-   *     calling thread
-   * </p>
-   */
-  @Override
-  public Transaction getTransaction() {
+    /**
+     * <p>
+     * Initializes the channel if it is not already, then checks to see
+     * if there is an open transaction for this thread, creating a new
+     * one via <code>createTransaction</code> if not.
+     *
+     * @return the current <code>Transaction</code> object for the
+     * calling thread
+     * </p>
+     */
+    @Override
+    public Transaction getTransaction() {
 
-    if (!initialized) {
-      synchronized (this) {
+        /**
+         * 判断是否已经初始化 Channel
+         * 由于 Source、Sink 的执行时间乱序 故加锁 double check 本质上不做什么 只是修改 initialized = true
+         */
         if (!initialized) {
-          initialize();
-          initialized = true;
+            synchronized (this) {
+                if (!initialized) {
+                    initialize();
+                    initialized = true;
+                }
+            }
         }
-      }
-    }
 
-    BasicTransactionSemantics transaction = currentTransaction.get();
-    if (transaction == null || transaction.getState().equals(
-            BasicTransactionSemantics.State.CLOSED)) {
-      transaction = createTransaction();
-      currentTransaction.set(transaction);
+        /**
+         * 创建事务 source 对应的是 put 事务、sink 对应的是 take 事务
+         * source、sink 运行在不同的线程 故使用 ThreadLocal 保证各自的事务对象是线程安全的
+         */
+        BasicTransactionSemantics transaction = currentTransaction.get();
+        /**
+         * 事务对象不存在 获取事务对象已经提交关闭了 则需要重新创建事务对象
+         */
+        if (transaction == null || transaction.getState().equals(BasicTransactionSemantics.State.CLOSED)) {
+            /**
+             * 创建事务对象并设置到当前线程副本
+             */
+            transaction = createTransaction();
+            currentTransaction.set(transaction);
+        }
+        return transaction;
     }
-    return transaction;
-  }
 }
