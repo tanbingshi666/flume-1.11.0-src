@@ -301,16 +301,29 @@ public class Application {
 
     @SuppressWarnings("unchecked")
     private void loadMonitoring() {
+        /**
+         * 获取系统环境变量
+         */
         Properties systemProps = System.getProperties();
+
+        /**
+         * 测试监控
+         */
+        // systemProps.setProperty("flume.monitoring.type", "http");
+
         Set<String> keys = systemProps.stringPropertyNames();
         try {
+            /**
+             * 判断系统环境变量是否存在 key = flume.monitoring.type 对应的值
+             * 如果想要配置 flume 监控 一般在执行命令的时候添加对应的参数 比如如下:
+             * bin/flume-ng agent --conf-file example.conf --name a1 -Dflume.monitoring.type=http -Dflume.monitoring.port=34545
+             */
             if (keys.contains(CONF_MONITOR_CLASS)) {
                 String monitorType = systemProps.getProperty(CONF_MONITOR_CLASS);
                 Class<? extends MonitorService> klass;
                 try {
                     //Is it a known type?
-                    klass = MonitoringType.valueOf(
-                            monitorType.toUpperCase(Locale.ENGLISH)).getMonitorClass();
+                    klass = MonitoringType.valueOf(monitorType.toUpperCase(Locale.ENGLISH)).getMonitorClass();
                 } catch (Exception e) {
                     //Not a known type, use FQCN
                     klass = (Class<? extends MonitorService>) Class.forName(monitorType);
